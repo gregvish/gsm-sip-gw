@@ -1,0 +1,13 @@
+# NOTE: Here "Module" is the name of the modem soundcard as is in /proc/asound/cards
+
+pcm.GsmModemCard {
+    type plug
+    slave {
+        pcm "hw:Module,0"
+    }
+}
+
+ctl.GsmModemCard {
+    type hw
+    card Module
+}
