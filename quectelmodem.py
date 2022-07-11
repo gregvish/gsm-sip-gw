@@ -16,6 +16,7 @@ NETWORK_COPS_ATTEMPTS = 10
 COPS_SLEEP = 2
 COPS_PASSIVE_SCAN_TIMEOUT = 4 * 60
 MANUAL_COPS_WAIT_SECONDS = 2 * 60
+MAX_MESSAGES = 20
 
 NET_TYPES = {
     0: 'GSM',
@@ -281,6 +282,7 @@ class QuectelModemManager:
 
         await self._cfun_restart()
         self.verify_ok(await self.do_cmd('AT+CMGF=1'))
+        self.verify_ok(await self.do_cmd('AT+CSDH=1'))
         self.verify_ok(await self.do_cmd('AT+CPMS="ME","ME","ME"'))
 
         await self._network_selection()
@@ -317,54 +319,77 @@ class QuectelModemManager:
             number, call_connected_cb, call_ended_cb
         ).run()
 
-    async def _handle_sms(self, cmti_urc):
-        cmti_num = 0
-        cmti_match = re.match(r'^\+CMTI\:\ (.*?),(.*?)$', cmti_urc)
-        if cmti_match:
-            _, cmti_num = cmti_match.groups()
+    async def _handle_sms(self):
+        messages = []
+        segmented_messages = {}
 
-        for i in range(0, int(cmti_num) + 1):
-            await self._handle_sms_single(i)
+        for msg_index in range(MAX_MESSAGES):
+            msg = await self._parse_sms_single(msg_index, segmented_messages)
+            if msg:
+                messages.append(msg)
 
-    async def _handle_sms_single(self, msg_idx):
-        result = await self.do_cmd('AT+CMGR=%d' % msg_idx)
+        logger.info('Got %d ready SMS, %d segmented' % (
+            len(messages), len(segmented_messages)
+        ))
+
+        for text, number, date, time, msg_indexes in messages:
+            text = '%s %s\n%s' % (date, time, text)
+            await self._sms_forwarder(number, text).send()
+
+            for idx in msg_indexes:
+                self.verify_ok(await self.do_cmd('AT+CMGD=%d,0' % idx))
+
+    async def _parse_sms_single(self, msg_index, seg_dict):
+        result = await self.do_cmd('AT+QCMGR=%d' % msg_index)
         self.verify_ok(result)
         msg_lines = [s for s in result.split('\n') if s]
 
-        out = []
-        number, date, time = "Unknown", None, None
+        head_match = re.match(r'^\+QCMGR\:\ (.*?)$', msg_lines[0])
+        if not head_match:
+            return None
 
-        head_match = re.match(r'^\+CMGR\:\ (.*?),(.*?),(.*?),(.*?),(.*?)$',
-                              msg_lines[0])
-        if head_match:
-            head = head_match.groups()
-            head = (s.replace('"', '') for s in head)
-            _, number, _, date, time = head
+        head = head_match.groups()[0].split(',')
+        head = [s.replace('"', '') for s in head]
 
-        else:
-            out.append(msg_lines[0])
+        segmented = False
+        _, number, _, date, time, _, _, _, _, _, _, size = head[:12]
 
-        if len(msg_lines) > 1:
-            for line in msg_lines[1:]:
-                if line == 'OK':
-                    continue
+        # Could be a multi-part message. Has 3 extra fields in header
+        if len(head) == 15:
+            msg_uid, msg_seg, tot_seg = head[12:]
+            msg_seg, tot_seg = int(msg_seg), int(tot_seg)
+            segmented = True
+            # Make 0 based
+            msg_seg -= 1
 
-                if re.match(r'^[0-9a-fA-F]+$', line) and len(line) % 2 == 0:
-                    try:
-                        decoded = bytes.fromhex(line).decode('utf-16-be')
-                        out.append(decoded)
+        text = '\n'.join(msg_lines[1:])
+        if text.endswith('OK'):
+            text = text[:-2]
+        text = text.strip()
 
-                    except UnicodeDecodeError as e:
-                        logger.warning('UnicodeDecodeError in SMS')
-                        out.append(line)
+        # Could be hex-encoded UTF16
+        if size != len(text) and re.match(r'^[0-9A-F]+$', text) and len(text) % 2 == 0:
+            text = bytes.fromhex(text).decode('utf-16-be')
 
-                else:
-                    out.append(line)
+        if not segmented:
+            return text, number, date, time, [msg_index]
 
-        await self._sms_forwarder(number, '\n'.join(out)).send()
-        self.verify_ok(await self.do_cmd('AT+CMGD=%d,0' % msg_idx))
+        if msg_uid not in seg_dict:
+            seg_dict[msg_uid] = ([None] * tot_seg, [None] * tot_seg)
+        seg_dict[msg_uid][0][msg_seg] = text
+        seg_dict[msg_uid][1][msg_seg] = msg_index
+
+        # Segmented message not complete yet
+        if None in seg_dict[msg_uid][0]:
+            return None
+
+        return ''.join(seg_dict[msg_uid][0]), number, date, time, seg_dict[msg_uid][1]
+
 
     async def _urc_handler(self):
+        # On boot, look at potentially missed SMS
+        await self._handle_sms()
+
         while True:
             urc = await self._urc_q.get()
             logger.info('URC -> %r' % (urc,))
@@ -377,7 +402,7 @@ class QuectelModemManager:
                 self._call_fwd_task.cancel()
 
             elif '+CMTI:' in urc:
-                await self._handle_sms(urc)
+                await self._handle_sms()
 
             elif '+CPIN: NOT READY' in urc:
                 raise AtStateError(urc)
