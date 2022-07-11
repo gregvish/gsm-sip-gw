@@ -11,9 +11,13 @@ from sipsimple.lookup import DNSLookup, DNSLookupError
 from sipsimple.session import Session
 from sipsimple.streams.rtp.audio import AudioStream
 from sipsimple.threading.green import run_in_green_thread
+from sipsimple.configuration.datatypes import STUNServerAddress
 
 
 logger = logging.getLogger('SIP')
+
+STUN_SERVER = STUNServerAddress('stun.linphone.org')
+MSG_STATUS_ACCEPTED = 202
 
 
 class TsFuture(asyncio.Future):
@@ -55,7 +59,9 @@ class SIPClient(SIPApplication):
     def _NH_SIPApplicationDidStart(self, notification):
         self._callee = ToHeader(SIPURI.parse(self._callee_uri))
         try:
-            routes = DNSLookup().lookup_sip_proxy(self._callee.uri, ['udp']).wait()
+            routes = DNSLookup().lookup_sip_proxy(
+                self._callee.uri, ['udp', 'tls']
+            ).wait()
         except DNSLookupError as e:
             self._did_app_start.set_exception(e)
         else:
@@ -89,6 +95,11 @@ class SIPClient(SIPApplication):
         self._msg_sent.set_result(True)
 
     def _NH_SIPMessageDidFail(self, notification):
+        if notification.data.code == MSG_STATUS_ACCEPTED:
+            logger.info('Message is cached at the proxy. Hope for the best')
+            self._msg_sent.set_result(True)
+            return
+
         logger.info('Failed to deliver message: %d %s' % (
             notification.data.code, notification.data.reason)
         )
@@ -102,10 +113,19 @@ class SIPClient(SIPApplication):
         return self._accounts[account_str]
 
     def _callerid_to_account(self, callerid):
+        if not callerid:
+            callerid = 'Unknown'
         if self._local_country_code and callerid.startswith(self._local_country_code):
             callerid = callerid.replace(self._local_country_code, '0')
+
         account = self._get_account('%s@gsm' % callerid)
+
         account.display_name = callerid
+        account.rtp.encryption.enabled = True
+        account.rtp.encryption.key_negotiation = 'sdes_mandatory'
+        account.nat_traversal.use_ice = True
+        account.nat_traversal.stun_server_list = [STUN_SERVER]
+
         return account
 
     async def call(self, callerid):
