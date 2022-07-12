@@ -59,6 +59,7 @@ class QuectelModemManager:
         self._in_call = False
         self._call_fwd_task = None
         self._cur_csq = 0
+        self.is_running = asyncio.Event()
 
     async def _reset_at(self):
         self._modem_w.write(b'\rATE\r')
@@ -422,6 +423,7 @@ class QuectelModemManager:
         if not await self._reset():
             return
 
+        self.is_running.set()
         urc_task = asyncio.create_task(self._urc_handler())
         await asyncio.gather(rx_task, urc_task)
 

@@ -1,4 +1,6 @@
 import re
+import signal
+import asyncio
 import logging
 import subprocess
 import contextlib
@@ -9,6 +11,9 @@ logger = logging.getLogger('QmiVoice')
 
 
 class QmiVoiceException(Exception):
+    pass
+
+class QmiNetworkException(Exception):
     pass
 
 
@@ -45,4 +50,24 @@ class QmiVoice:
         finally:
             self._release_cid(cid)
             logger.info('QMI released voice CID: %d' % (cid,))
+
+    async def _follow_network(self, is_running_event):
+        await is_running_event.wait()
+
+        proc = await asyncio.create_subprocess_shell(
+            'qmicli --device=%s --wds-start-network="ip-type=4"' % (self._device, ) +
+            ' --wds-follow-network | stdbuf -oL -eL uniq',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+        )
+
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            logger.info('qmicli: %s' % (line.decode().strip(), ))
+
+        raise QmiNetworkException('Network qmicli died')
+
+    def network_task(self, is_running_event):
+        return asyncio.create_task(self._follow_network(is_running_event))
 

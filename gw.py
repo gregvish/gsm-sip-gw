@@ -23,6 +23,7 @@ def parse_cmdline():
     parser.add_argument('--preferred_network', help='GSM/UMTS/LTE', default='LTE')
     parser.add_argument('--local_country_code', help='E.g. +972, to remove from caller ID',
                         default=None)
+    parser.add_argument('--network', help='Start QMI network', type=bool, default=False)
     return parser.parse_args()
 
 
@@ -47,8 +48,13 @@ async def main():
             preferred_network=args.preferred_network
         )
 
-        with qmivoice.QmiVoice(args.modem_dev).alloc_cid():
-            await modem_manager.run()
+        qmi = qmivoice.QmiVoice(args.modem_dev)
+        with qmi.alloc_cid():
+            tasks = [modem_manager.run()]
+            if args.network:
+                tasks.append(qmi.network_task(modem_manager.is_running))
+
+            await asyncio.gather(*tasks)
 
 
 if __name__ == '__main__':
