@@ -4,7 +4,7 @@ import logging
 import argparse
 import functools
 
-import qmivoice
+from qmi import QmiManager
 from sip import SIPClient, SIPCallForwarder, SIPSmsForwarder
 from quectelmodem import QuectelModemManager
 
@@ -29,6 +29,7 @@ def parse_cmdline():
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+
     args = parse_cmdline()
     sip = SIPClient(args.local_country_code)
 
@@ -48,11 +49,11 @@ async def main():
             preferred_network=args.preferred_network
         )
 
-        qmi = qmivoice.QmiVoice(args.modem_dev)
-        with qmi.alloc_cid():
+        qmi = QmiManager(args.modem_dev, modem_manager.is_running_event)
+        with qmi.alloc_voice_cid():
             tasks = [modem_manager.run()]
             if args.network:
-                tasks.append(qmi.network_task(modem_manager.is_running))
+                tasks.append(qmi.network_task())
 
             await asyncio.gather(*tasks)
 

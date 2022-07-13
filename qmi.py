@@ -1,4 +1,5 @@
 import re
+import time
 import signal
 import asyncio
 import logging
@@ -6,8 +7,10 @@ import subprocess
 import contextlib
 
 
+NETWORK_QUICK_FAIL_TIMEOUT = 60
 CID_PATTERN = re.compile(rb'.*\sCID\:\s\'(\d+)\'.*', re.MULTILINE | re.DOTALL)
-logger = logging.getLogger('QmiVoice')
+
+logger = logging.getLogger('QmiManager')
 
 
 class QmiVoiceException(Exception):
@@ -17,12 +20,13 @@ class QmiNetworkException(Exception):
     pass
 
 
-class QmiVoice:
+class QmiManager:
     '''
     Wraps the qmicli utility by parsing its output
     '''
-    def __init__(self, device):
+    def __init__(self, device, is_running_event):
         self._device = device
+        self._is_running_event = is_running_event
 
     def _release_cid(self, cid):
         subprocess.run(
@@ -30,7 +34,7 @@ class QmiVoice:
         )
 
     @contextlib.contextmanager
-    def alloc_cid(self):
+    def alloc_voice_cid(self):
         # HACK: Allocate this CID first, so that set_current_host_app runs on openqti
         subprocess.run(['qmicli', '-d', self._device, '--dms-noop'])
 
@@ -51,9 +55,7 @@ class QmiVoice:
             self._release_cid(cid)
             logger.info('QMI released voice CID: %d' % (cid,))
 
-    async def _follow_network(self, is_running_event):
-        await is_running_event.wait()
-
+    async def _follow_network_once(self):
         proc = await asyncio.create_subprocess_shell(
             'qmicli --device=%s --wds-start-network="ip-type=4"' % (self._device, ) +
             ' --wds-follow-network | stdbuf -oL -eL uniq',
@@ -66,8 +68,17 @@ class QmiVoice:
                 break
             logger.info('qmicli: %s' % (line.decode().strip(), ))
 
-        raise QmiNetworkException('Network qmicli died')
+        await proc.wait()
 
-    def network_task(self, is_running_event):
-        return asyncio.create_task(self._follow_network(is_running_event))
+    async def _follow_network(self):
+        await self._is_running_event.wait()
+
+        while True:
+            start = time.monotonic()
+            await self._follow_network_once()
+            if time.monotonic() - start < NETWORK_QUICK_FAIL_TIMEOUT:
+                raise QmiNetworkException('Network disconnected too quickly')
+
+    def network_task(self):
+        return asyncio.create_task(self._follow_network())
 
