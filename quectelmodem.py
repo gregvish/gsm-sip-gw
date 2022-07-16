@@ -342,6 +342,24 @@ class QuectelModemManager:
             for idx in msg_indexes:
                 self.verify_ok(await self.do_cmd('AT+CMGD=%d,0' % idx))
 
+    def _xlate_sms_number(self, number):
+        # Is it an actual number?
+        if number.startswith('+') or number.startswith('0'):
+            return number
+
+        res = []
+        i = 0
+        while i < len(number):
+            if number[i] == '1':
+                char = int(number[i: i+3])
+                i += 3
+            else:
+                char = int(number[i: i+2])
+                i += 2
+            res.append(char)
+
+        return bytes(res).decode()
+
     async def _parse_sms_single(self, msg_index, seg_dict):
         result = await self.do_cmd('AT+QCMGR=%d' % msg_index)
         self.verify_ok(result)
@@ -356,6 +374,8 @@ class QuectelModemManager:
 
         segmented = False
         _, number, _, date, time, _, _, _, _, _, _, size = head[:12]
+
+        number = self._xlate_sms_number(number)
 
         # Could be a multi-part message. Has 3 extra fields in header
         if len(head) == 15:
