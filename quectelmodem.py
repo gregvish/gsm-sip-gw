@@ -1,5 +1,6 @@
 import re
 import os
+import string
 import asyncio
 import logging
 import argparse
@@ -347,18 +348,23 @@ class QuectelModemManager:
         if number.startswith('+') or number.startswith('0'):
             return number
 
+        # Attempt to parse the garbled gsm-7 decimal garbage we get here
         res = []
         i = 0
         while i < len(number):
             if number[i] == '1':
                 char = int(number[i: i+3])
-                i += 3
-            else:
-                char = int(number[i: i+2])
-                i += 2
+                if char < 128:
+                    i += 3
+                    res.append(char)
+                    continue
+            char = int(number[i: i+2])
+            i += 2
             res.append(char)
 
-        return bytes(res).decode()
+        whitelist_chars = (string.ascii_letters + string.digits + '-_').encode()
+        filtered = bytes([c if c in whitelist_chars else ord('_') for c in res])
+        return filtered.decode()
 
     async def _parse_sms_single(self, msg_index, seg_dict):
         result = await self.do_cmd('AT+QCMGR=%d' % msg_index)
@@ -431,6 +437,8 @@ class QuectelModemManager:
         if self._preferred_network == 'LTE' and not self._disregard_volte:
             await self._check_volte()
 
+        self.is_running_event.set()
+
         while True:
             urc = await self._urc_q.get()
             logger.info('URC -> %r' % (urc,))
@@ -463,7 +471,6 @@ class QuectelModemManager:
         if not await self._reset():
             return
 
-        self.is_running_event.set()
         urc_task = asyncio.create_task(self._urc_handler())
         await asyncio.gather(rx_task, urc_task)
 
