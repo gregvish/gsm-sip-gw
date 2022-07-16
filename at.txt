@@ -9,8 +9,9 @@ USB composition:
 
 Try to force VoLTE (IMS):
 
-    AT+QMBNCFG="Select","ROW_Generic_3GPP"
     AT+QCFG="ims",1
+
+    AT+QMBNCFG="Select","ROW_Generic_3GPP"
     AT+QNVFW="/nv/item_files/ims/IMS_enable",01
 
 
