@@ -24,6 +24,8 @@ def parse_cmdline():
     parser.add_argument('--local_country_code', help='E.g. +972, to remove from caller ID',
                         default=None)
     parser.add_argument('--network', help='Start QMI network', type=bool, default=False)
+    parser.add_argument('--disregard_volte', help='Ignore if VoLTE is unavaliable',
+                        type=bool, default=False)
     return parser.parse_args()
 
 
@@ -46,7 +48,8 @@ async def main():
             call_forwarder=call_fwd,
             sms_forwarder=sms_fwd,
             sim_card_pin=args.sim_pin,
-            preferred_network=args.preferred_network
+            preferred_network=args.preferred_network,
+            disregard_volte=args.disregard_volte
         )
 
         qmi = QmiManager(args.modem_dev, modem_manager.is_running_event)

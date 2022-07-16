@@ -17,6 +17,7 @@ COPS_SLEEP = 2
 COPS_PASSIVE_SCAN_TIMEOUT = 4 * 60
 MANUAL_COPS_WAIT_SECONDS = 2 * 60
 MAX_MESSAGES = 20
+VOLTE_CHECK_ATTEMPTS = 20
 
 NET_TYPES = {
     0: 'GSM',
@@ -44,13 +45,14 @@ class NetworkError(Exception):
 class QuectelModemManager:
     def __init__(self, modem_tty, modem_baud=MODEM_BAUD, call_forwarder=None,
                  sms_forwarder=None, sim_card_pin=None, preferred_network='LTE',
-                 extra_initer=None):
+                 disregard_volte=False, extra_initer=None):
         self._call_forwarder = call_forwarder
         self._sms_forwarder = sms_forwarder
         self._modem_tty = modem_tty
         self._modem_baud = modem_baud
         self._extra_initer = extra_initer
         self._preferred_network = preferred_network
+        self._disregard_volte = disregard_volte
         self.sim_card_pin = sim_card_pin
 
         self._last_cmd = b''
@@ -386,10 +388,28 @@ class QuectelModemManager:
 
         return ''.join(seg_dict[msg_uid][0]), number, date, time, seg_dict[msg_uid][1]
 
+    async def _check_volte(self):
+        for i in range(VOLTE_CHECK_ATTEMPTS):
+            res = await self.do_cmd('AT+QCFG="ims"')
+            match = re.match(r'^\+QCFG\:\ \"ims\",(.*?),(.*?)$', res, re.MULTILINE)
+            if not match:
+                raise AtCommandError('Unexpected: %r', res)
+
+            _, volte = match.groups()
+            if volte == '1':
+                logger.info('IMS registered (VoLTE)')
+                break
+            await asyncio.sleep(AT_MEDIUM_TIMEOUT)
+
+        else:
+            raise NetworkError('IMS not registered (no VoLTE): %r', res)
 
     async def _urc_handler(self):
         # On boot, look at potentially missed SMS
         await self._handle_sms()
+
+        if self._preferred_network == 'LTE' and not self._disregard_volte:
+            await self._check_volte()
 
         while True:
             urc = await self._urc_q.get()

@@ -29,3 +29,7 @@ Apart from this, the AT command port of the modem should be found, on a path lik
 ./doit.sh --sip_dest <SIP-URI> --modem_tty /dev/ttyUSB2 --modem_dev /dev/cdc-wdm0
 ```
 This builds the docker image, and runs it as daemon that also survives reboots. The ouput can be seen using `docker logs -f gsm-sip-gw-container`
+
+# Modem setup
+The modem needs to be configured with some AT commands before use. Depending on what
+you need, refer to `at.txt` in this repo.

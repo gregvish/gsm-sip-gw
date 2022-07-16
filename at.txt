@@ -1,0 +1,26 @@
+Persistent commands to set up modem (restart after configuring)
+
+
+USB composition:
+
+    AT+ADBON
+    AT+EN_USBAUD
+
+
+Try to force VoLTE (IMS):
+
+    AT+QMBNCFG="Select","ROW_Generic_3GPP"
+    AT+QCFG="ims",1
+    AT+QNVFW="/nv/item_files/ims/IMS_enable",01
+
+
+Configure APNs (and set IMS type for an APN):
+
+    AT+CGDCONT=1,"IPV4V6","Internet"
+    AT+CGDCONT=2,"IPV4V6","ims"
+
+    AT$QCPDPIMSCFGE=1,0
+    AT$QCPDPIMSCFGE=2,1
+
+
+
