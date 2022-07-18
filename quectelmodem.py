@@ -1,6 +1,8 @@
 import re
 import os
+import time
 import string
+import aiohttp
 import asyncio
 import logging
 import argparse
@@ -19,6 +21,8 @@ COPS_PASSIVE_SCAN_TIMEOUT = 4 * 60
 MANUAL_COPS_WAIT_SECONDS = 2 * 60
 MAX_MESSAGES = 20
 VOLTE_CHECK_ATTEMPTS = 20
+CONN_CHECK_URL = 'http://one.one.one.one'
+CONN_CHECK_TIMEOUT = 5 * 60
 
 NET_TYPES = {
     0: 'GSM',
@@ -430,14 +434,28 @@ class QuectelModemManager:
         else:
             raise NetworkError('IMS not registered (no VoLTE): %r', res)
 
-    async def _urc_handler(self):
-        # On boot, look at potentially missed SMS
-        await self._handle_sms()
+    async def _wait_for_conn_check(self):
+        start = time.monotonic()
 
+        while True:
+            if time.monotonic() - start > CONN_CHECK_TIMEOUT:
+                raise TimeoutError('Conn check timed out')
+
+            try:
+                async with aiohttp.request(
+                    'GET', CONN_CHECK_URL, timeout=aiohttp.client.ClientTimeout(10)
+                    ) as resp:
+                    break
+            except Exception as e:
+                logger.warning('Waiting for internet access: %r', e)
+
+    async def _urc_handler(self):
         if self._preferred_network == 'LTE' and not self._disregard_volte:
             await self._check_volte()
 
         self.is_running_event.set()
+        await self._wait_for_conn_check()
+        await self._handle_sms()
 
         while True:
             urc = await self._urc_q.get()

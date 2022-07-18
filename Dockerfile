@@ -22,6 +22,7 @@ RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y \
 
 
 RUN pip install pyserial-asyncio==0.6
+RUN pip install aiohttp==3.8.1
 
 
 RUN useradd -ms /bin/bash user
