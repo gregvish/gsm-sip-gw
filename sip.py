@@ -204,6 +204,7 @@ class SIPSmsForwarder:
         self._msg = msg
 
     async def send(self):
+        logger.info('Forwarding SMS from %s' % (self._callerid, ))
         await self._sip.message(self._callerid, self._msg)
 
 

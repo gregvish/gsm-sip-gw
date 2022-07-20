@@ -311,7 +311,9 @@ class QuectelModemManager:
 
         self._in_call = True
         number = number.replace('"', '')
-        logger.info('Got call! #%s, number: %s, type: %s' % (idx, number, type))
+        logger.info('[%s] Got call! #%s, number: %s, type: %s' % (
+            time.asctime(time.localtime()), idx, number, type)
+        )
 
         async def call_ended_cb():
             self._in_call = False
@@ -336,12 +338,12 @@ class QuectelModemManager:
             if msg:
                 messages.append(msg)
 
-        logger.info('Got %d ready SMS, %d segmented' % (
-            len(messages), len(segmented_messages)
+        logger.info('[%s] Got %d ready SMS, %d segmented' % (
+            time.asctime(time.localtime()), len(messages), len(segmented_messages)
         ))
 
-        for text, number, date, time, msg_indexes in messages:
-            text = '%s %s\n%s' % (date, time, text)
+        for text, number, date, mtime, msg_indexes in messages:
+            text = '%s %s\n%s' % (date, mtime, text)
             await self._sms_forwarder(number, text).send()
 
             for idx in msg_indexes:
@@ -383,7 +385,7 @@ class QuectelModemManager:
         head = [s.replace('"', '') for s in head]
 
         segmented = False
-        _, number, _, date, time, _, _, _, _, _, _, size = head[:12]
+        _, number, _, date, mtime, _, _, _, _, _, _, size = head[:12]
 
         number = self._xlate_sms_number(number)
 
@@ -405,7 +407,7 @@ class QuectelModemManager:
             text = bytes.fromhex(text).decode('utf-16-be')
 
         if not segmented:
-            return text, number, date, time, [msg_index]
+            return text, number, date, mtime, [msg_index]
 
         if msg_uid not in seg_dict:
             seg_dict[msg_uid] = ([None] * tot_seg, [None] * tot_seg)
@@ -416,7 +418,7 @@ class QuectelModemManager:
         if None in seg_dict[msg_uid][0]:
             return None
 
-        return ''.join(seg_dict[msg_uid][0]), number, date, time, seg_dict[msg_uid][1]
+        return ''.join(seg_dict[msg_uid][0]), number, date, mtime, seg_dict[msg_uid][1]
 
     async def _check_volte(self):
         for i in range(VOLTE_CHECK_ATTEMPTS):
