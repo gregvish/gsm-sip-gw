@@ -1,3 +1,4 @@
+import time
 import asyncio
 import logging
 import contextlib
@@ -50,6 +51,7 @@ class SIPClient(SIPApplication):
         self._accounts = {}
         self._session = None
         self._local_country_code = local_country_code
+        self.rang = False
 
     def start(self, callee):
         self._callee_uri = callee
@@ -70,6 +72,7 @@ class SIPClient(SIPApplication):
 
     def _NH_SIPSessionGotRingIndication(self, notification):
         logger.info('Ringing!')
+        self.rang = True
 
     def _NH_SIPSessionDidStart(self, notification):
         logger.info('Call connected, session started!')
@@ -129,6 +132,7 @@ class SIPClient(SIPApplication):
         return account
 
     async def call(self, callerid):
+        self.rang = False
         await self._did_app_start
         self._call_started = TsFuture()
         self._call_ended = TsFuture()
@@ -178,6 +182,8 @@ class SIPCallForwarder:
         return asyncio.create_task(self._call())
 
     async def _call(self):
+        was_taken = False
+
         try:
             try:
                 await asyncio.wait_for(self._sip.call(self._callerid),
@@ -186,6 +192,7 @@ class SIPCallForwarder:
                 logger.info('Call timed out')
                 return
 
+            was_taken = True
             if self._connected_cb:
                 await self._connected_cb()
             await self._sip.wait_call()
@@ -193,8 +200,17 @@ class SIPCallForwarder:
         finally:
             if self._ended_cb:
                 await self._ended_cb()
+
             await self._sip.end_call()
             logger.info('Call ended')
+
+            if was_taken:
+                return
+            logger.info('Notifying of missed call')
+            await self._sip.message(self._callerid, 'Missed call at %s UTC %s' % (
+                time.asctime(time.localtime()),
+                '(It rang)' if self._sip.rang else ''
+            ))
 
 
 class SIPSmsForwarder:
