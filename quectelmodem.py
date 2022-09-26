@@ -404,7 +404,7 @@ class QuectelModemManager:
 
         # Could be hex-encoded UTF16
         if size != len(text) and re.match(r'^[0-9A-F]+$', text) and len(text) % 2 == 0:
-            text = bytes.fromhex(text).decode('utf-16-be')
+            text = bytes.fromhex(text).decode('utf-16-be', errors='replace')
 
         if not segmented:
             return text, number, date, mtime, [msg_index]
