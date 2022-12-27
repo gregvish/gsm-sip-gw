@@ -125,7 +125,7 @@ class SIPClient(SIPApplication):
 
         account.display_name = callerid
         account.rtp.encryption.enabled = True
-        account.rtp.encryption.key_negotiation = 'sdes_mandatory'
+        #account.rtp.encryption.key_negotiation = 'sdes_mandatory'
         #account.nat_traversal.use_ice = True
         #account.nat_traversal.stun_server_list = [STUN_SERVER]
 
