@@ -33,3 +33,13 @@ This builds the docker image, and runs it as daemon that also survives reboots. 
 # Modem setup
 The modem needs to be configured with some AT commands before use. Depending on what
 you need, refer to `at.txt` in this repo.
+
+# eSIM (eUICC) support
+You can attach a Consumer eUICC (for example, the esim.me card) to the Quectel modem. In order
+to manage the eSIMs, run:
+```
+./apdu.py --modem_tty /dev/ttyUSB2
+```
+
+And then run the forked LPAdesktop build from here: https://github.com/gregvish/LPAdesktop/releases/tag/v1.0
+That will connect to the apdu.py and provide a GUI for managing eSIM sims.
