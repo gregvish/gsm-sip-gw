@@ -14,6 +14,7 @@ def parse_cmdline():
     parser.add_argument('--pin', help='Explicitly given PIN', default=None)
     parser.add_argument('--preferred_network', help='GSM/UMTS/LTE', default='LTE')
     parser.add_argument('--network', help='Start QMI network', type=bool, default=False)
+    parser.add_argument('--apn', help='APN', default=None, required=False)
     return parser.parse_args()
 
 
@@ -42,7 +43,8 @@ async def main():
         preferred_network=args.preferred_network,
         disregard_volte=True,
         sms_forwarder=sms_forwarder,
-        call_forwarder=call_forwarder
+        call_forwarder=call_forwarder,
+        apn=args.apn,
     )
     qmi = QmiManager(args.modem_dev, modem.is_running_event)
 
