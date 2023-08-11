@@ -50,7 +50,7 @@ class NetworkError(Exception):
 class QuectelModemManager:
     def __init__(self, modem_tty, modem_baud=MODEM_BAUD, call_forwarder=None,
                  sms_forwarder=None, sim_card_pin=None, preferred_network='LTE',
-                 disregard_volte=False, extra_initer=None):
+                 disregard_volte=False, extra_initer=None, apn=None):
         self._call_forwarder = call_forwarder
         self._sms_forwarder = sms_forwarder
         self._modem_tty = modem_tty
@@ -58,6 +58,7 @@ class QuectelModemManager:
         self._extra_initer = extra_initer
         self._preferred_network = preferred_network
         self._disregard_volte = disregard_volte
+        self._apn = apn
         self.sim_card_pin = sim_card_pin
 
         self._last_cmd = b''
@@ -276,6 +277,20 @@ class QuectelModemManager:
             elif 'PB DONE' in urc:
                 break
 
+    async def _reset_apn(self):
+        # Remove existing and add one apn-less PDP context
+        for i in range(4):
+            await self.do_cmd('AT+CGDCONT=%d' % i)
+        self.verify_ok(await self.do_cmd('AT+CGDCONT=1,"IPV4V6"'))
+
+        if self._apn:
+            self.verify_ok(await self.do_cmd('AT+CGDCONT=1,"IPV4V6","%s"' % self._apn))
+            self.verify_ok(await self.do_cmd('AT$QCPDPIMSCFGE=1,0'))
+
+        if not self._disregard_volte:
+            self.verify_ok(await self.do_cmd('AT+CGDCONT=2,"IPV4V6","ims"'))
+            self.verify_ok(await self.do_cmd('AT$QCPDPIMSCFGE=2,1'))
+
     async def _reset(self):
         retval = True
         self.verify_ok(await self.do_cmd('AT'))
@@ -293,6 +308,7 @@ class QuectelModemManager:
         self.verify_ok(await self.do_cmd('AT+CSDH=1'))
         self.verify_ok(await self.do_cmd('AT+CPMS="ME","ME","ME"'))
 
+        await self._reset_apn()
         await self._network_selection()
         return retval
 
