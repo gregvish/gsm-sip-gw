@@ -42,7 +42,7 @@ class SIPMessageError(Exception):
 
 
 class SIPClient(SIPApplication):
-    def __init__(self, local_country_code):
+    def __init__(self, local_country_code, backup_fwd=None):
         SIPApplication.__init__(self)
         notification_center = NotificationCenter()
         notification_center.add_observer(self)
@@ -51,6 +51,7 @@ class SIPClient(SIPApplication):
         self._accounts = {}
         self._session = None
         self._local_country_code = local_country_code
+        self._backup_fwd = backup_fwd
         self.rang = False
 
     def start(self, callee):
@@ -100,7 +101,7 @@ class SIPClient(SIPApplication):
     def _NH_SIPMessageDidFail(self, notification):
         if notification.data.code == MSG_STATUS_ACCEPTED:
             logger.info('Message is cached at the proxy. Hope for the best')
-            self._msg_sent.set_result(True)
+            self._msg_sent.set_result(False)
             return
 
         logger.info('Failed to deliver message: %d %s' % (
@@ -151,15 +152,25 @@ class SIPClient(SIPApplication):
     async def wait_call(self):
         await self._call_ended
 
-    async def message(self, callerid, msg):
+    async def message(self, callerid, msg_text):
         await self._did_app_start
         self._msg_sent = TsFuture()
 
         msg = Message(FromHeader(self._callerid_to_account(callerid).uri),
                       self._callee, RouteHeader(self._routes[0].uri),
-                      'text/plain', msg)
+                      'text/plain', msg_text)
         msg.send()
-        await self._msg_sent
+
+        try:
+            result = await self._msg_sent
+        except Exception as e:
+            result = False
+            logger.warning('SIP message fwd error: %r' % (e, ))
+
+        if not result and not self._backup_fwd:
+            raise SIPMessageError('Fwd fail and no backup fwd given')
+        elif not result:
+            self._backup_fwd.forward(callerid, msg_text)
 
     @contextlib.contextmanager
     def context(self, callee):

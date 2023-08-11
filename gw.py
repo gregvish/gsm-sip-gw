@@ -6,6 +6,7 @@ import functools
 
 from qmi import QmiManager
 from sip import SIPClient, SIPCallForwarder, SIPSmsForwarder
+from tg import TgForwarder
 from quectelmodem import QuectelModemManager
 
 
@@ -15,6 +16,8 @@ logger = logging.getLogger('GsmGw')
 def parse_cmdline():
     parser = argparse.ArgumentParser(description='GSM to SIP Gateway')
     parser.add_argument('--sip_dest', help='Target SIP URI', required=True)
+    parser.add_argument('--tg_bot', help='Backup TG bot auth', required=False)
+    parser.add_argument('--tg_chat', help='Backup TG chat ID', required=False)
     parser.add_argument('--modem_tty', help='TTY device of the modem for AT', required=True)
     parser.add_argument('--modem_dev', help='Modem device for QMI', required=True)
     parser.add_argument('--call_timeout', help='Timeout for ringing before hangup',
@@ -33,7 +36,12 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     args = parse_cmdline()
-    sip = SIPClient(args.local_country_code)
+
+    tg_fwd = None
+    if args.tg_bot:
+        tg_fwd = TgForwarder(args.tg_bot, args.tg_chat)
+
+    sip = SIPClient(args.local_country_code, tg_fwd)
 
     with sip.context(args.sip_dest):
         logger.info('Created SIP client')
@@ -41,6 +49,7 @@ async def main():
         call_fwd = functools.partial(
             SIPCallForwarder, sip, call_timeout=args.call_timeout
         )
+
         sms_fwd = functools.partial(SIPSmsForwarder, sip)
 
         modem_manager = QuectelModemManager(
