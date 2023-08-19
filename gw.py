@@ -29,6 +29,7 @@ def parse_cmdline():
     parser.add_argument('--network', help='Start QMI network', type=bool, default=False)
     parser.add_argument('--disregard_volte', help='Ignore if VoLTE is unavaliable',
                         type=bool, default=False)
+    parser.add_argument('--apn', help='APN', default=None, required=False)
     return parser.parse_args()
 
 
@@ -58,7 +59,8 @@ async def main():
             sms_forwarder=sms_fwd,
             sim_card_pin=args.sim_pin,
             preferred_network=args.preferred_network,
-            disregard_volte=args.disregard_volte
+            disregard_volte=args.disregard_volte,
+            apn=args.apn,
         )
 
         qmi = QmiManager(args.modem_dev, modem_manager.is_running_event)

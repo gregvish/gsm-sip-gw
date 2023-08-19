@@ -10,7 +10,7 @@ RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y \
     curl
 
 RUN curl -o /etc/apt/trusted.gpg.d/agp-debian-key.gpg \
-    http://download.ag-projects.com/agp-debian-key.gpg
+    https://download.ag-projects.com/agp-debian-key.gpg
 
 RUN echo "deb http://ag-projects.com/ubuntu focal main" >> \
     /etc/apt/sources.list.d/sipsimple.list && \
@@ -22,7 +22,6 @@ RUN apt-get update && DEBIAN_FRONTEND="noninteractive" apt-get install -y \
 
 
 RUN pip install pyserial-asyncio==0.6
-RUN pip install aiohttp==3.8.1
 RUN pip install requests==2.22.0
 
 
